@@ -68,6 +68,9 @@
 #include <vector>
 #include <list>
 
+//@maphysart
+#include <UT/UT_PtrArray.h>
+
 namespace hvdb = openvdb_houdini;
 namespace hutil = houdini_utils;
 

@@ -47,6 +47,8 @@
 #include <openvdb/tools/ParticlesToLevelSet.h>
 #include <CH/CH_Manager.h>
 
+//@maphysart
+#include <GEO/GEO_AttributeOwner.h>
 
 namespace hvdb = openvdb_houdini;
 namespace hutil = houdini_utils;
