@@ -78,16 +78,24 @@
 # $(NUMPY_INCL_DIR) below to your local distributions of those libraries.
 #
 
-# The directory into which to install libraries, executables and header files
-INSTALL_DIR := /tmp/OpenVDB
 
+#CC= clang
+#CXX=clang++
+#LD=gcc
+
+
+# The directory into which to install libraries, executables and header files
+INSTALL_DIR := /usr/local
 # The parent directory of the boost/ header directory
-BOOST_INCL_DIR := $(HT)/include
+#BOOST_INCL_DIR := $(HT)/include
+BOOST_INCL_DIR := /usr/include
 
 # The parent directory of the OpenEXR/ header directory
-EXR_INCL_DIR := $(HT)/include
+#EXR_INCL_DIR := $(HT)/include
+EXR_INCL_DIR := /usr/include
 # The directory containing libIlmImf, libIlmThread, etc.
-EXR_LIB_DIR := $(HDSO)
+#EXR_LIB_DIR := $(HDSO)
+EXR_LIB_DIR := /usr/lib
 EXR_LIB := -lIlmImf -lIlmThread -lIex -lImath
 
 # The parent directory of the OpenEXR/ header directory (which contains half.h)
@@ -97,52 +105,63 @@ HALF_LIB_DIR := $(EXR_LIB_DIR)
 HALF_LIB := -lHalf
 
 # The parent directory of the tbb/ header directory
-TBB_INCL_DIR := $(HT)/include
+#TBB_INCL_DIR := $(HT)/include
+TBB_INCL_DIR := /usr/include
 # The directory containing libtbb
-TBB_LIB_DIR := $(HDSO)
+#TBB_LIB_DIR := $(HDSO)
+TBB_LIB_DIR := /usr/lib
 TBB_LIB := -ltbb
 
 # A scalable, concurrent malloc replacement library
 # such as jemalloc (included in the Houdini HDK) or TBB malloc
 # (leave blank if unavailable)
-CONCURRENT_MALLOC_LIB := -ljemalloc
-#CONCURRENT_MALLOC_LIB := -ltbbmalloc_proxy -ltbbmalloc
+#CONCURRENT_MALLOC_LIB := -ljemalloc
+CONCURRENT_MALLOC_LIB := -ltbbmalloc_proxy -ltbbmalloc
 # The directory containing the malloc replacement library
-CONCURRENT_MALLOC_LIB_DIR := $(HDSO)
+CONCURRENT_MALLOC_LIB_DIR := /usr/lib
 
 # The parent directory of the cppunit/ header directory
 # (leave blank if CppUnit is unavailable)
-CPPUNIT_INCL_DIR := /rel/map/generic-2013.22/sys_include
+#CPPUNIT_INCL_DIR := /rel/map/generic-2013.22/sys_include
+CPPUNIT_INCL_DIR := /usr/include
 # The directory containing libcppunit
-CPPUNIT_LIB_DIR := /rel/depot/third_party_build/cppunit/1.10.2-7/opt-ws5-x86_64-gccWS5_64/lib
+#CPPUNIT_LIB_DIR := /rel/depot/third_party_build/cppunit/1.10.2-7/opt-ws5-x86_64-gccWS5_64/lib
+CPPUNIT_LIB_DIR := /usr/lib
 CPPUNIT_LIB := -lcppunit
 
 # The directory containing glfw.h
 # (leave blank if GLFW is unavailable)
-GLFW_INCL_DIR := /rel/third_party/glfw/current/include
+#GLFW_INCL_DIR := /rel/third_party/glfw/current/include
+GLFW_INCL_DIR := /usr/include/GL
 # The directory containing libglfw
-GLFW_LIB_DIR := /rel/third_party/glfw/current/lib
+#GLFW_LIB_DIR := /rel/third_party/glfw/current/lib
+GLFW_LIB_DIR := /usr/lib
 GLFW_LIB := -lglfw
 
 # The version of Python for which to build the OpenVDB module
 # (leave blank if Python is unavailable)
-PYTHON_VERSION := 2.6
+PYTHON_VERSION := 2.7
 # The directory containing Python.h
-PYTHON_INCL_DIR := $(HFS)/python/include/python$(PYTHON_VERSION)
+#PYTHON_INCL_DIR := $(HFS)/python/include/python$(PYTHON_VERSION)
+PYTHON_INCL_DIR :=/usr/include/python2.7
 # The directory containing pyconfig.h
 PYCONFIG_INCL_DIR := $(PYTHON_INCL_DIR)
 # The directory containing libpython
-PYTHON_LIB_DIR := $(HFS)/python/lib
-PYTHON_LIB := -lpython$(PYTHON_VERSION)
+#PYTHON_LIB_DIR := $(HFS)/python/lib
+PYTHON_LIB_DIR := /usr/lib	
+#PYTHON_LIB := -lpython$(PYTHON_VERSION)
+PYTHON_LIB := -lpython2.7
 # The directory containing libboost_python
-BOOST_PYTHON_LIB_DIR := /rel/depot/third_party_build/boost/rhel6-1.46.1-0/lib
-BOOST_PYTHON_LIB := -lboost_python-gcc41-mt-python26-1_46_1
+BOOST_PYTHON_LIB_DIR := /usr/lib
+#BOOST_PYTHON_LIB := -lboost_python-gcc41-mt-python26-1_46_1
+BOOST_PYTHON_LIB := -lboost_python-mt-py27
 # The directory containing arrayobject.h
 # (leave blank if NumPy is unavailable)
-NUMPY_INCL_DIR := /rel/map/generic-2013.22/include
+NUMPY_INCL_DIR := /usr/include/numpy
 # The Epydoc executable
 # (leave blank if Epydoc is unavailable)
-EPYDOC := epydoc
+#EPYDOC := epydoc
+EPYDOC := 
 # Set PYTHON_WRAP_ALL_GRID_TYPES to "yes" to specify that the Python module
 # should expose (almost) all of the grid types defined in openvdb.h
 # Otherwise, only FloatGrid, BoolGrid and Vec3SGrid will be exposed
@@ -153,7 +172,7 @@ PYTHON_WRAP_ALL_GRID_TYPES := no
 
 # The Doxygen executable
 # (leave blank if Doxygen is unavailable)
-DOXYGEN := doxygen
+DOXYGEN := 
 
 
 #
@@ -208,7 +227,8 @@ endif
 
 INCLDIRS := -I . -I .. -I $(BOOST_INCL_DIR) -I $(HALF_INCL_DIR) -I $(TBB_INCL_DIR)
 
-CXXFLAGS += -pthread $(OPTIMIZE) $(INCLDIRS)
+#CXXFLAGS += -pthread $(OPTIMIZE) $(INCLDIRS)
+CXXFLAGS += -pthread -g $(INCLDIRS)
 
 LIBS := \
     -ldl -lm -lz \
@@ -276,8 +296,6 @@ INCLUDE_NAMES := \
     tools/LevelSetAdvect.h \
     tools/LevelSetFilter.h \
     tools/LevelSetFracture.h \
-    tools/LevelSetMeasure.h \
-    tools/LevelSetMorph.h \
     tools/LevelSetRebuild.h \
     tools/LevelSetSphere.h \
     tools/LevelSetTracker.h \
@@ -640,11 +658,10 @@ $(LIBVIEWER_OBJ_NAMES): %.o: %.cc
 	@echo "Building $@ because of $(call list_deps)"
 	$(CXX) -c $(CXXFLAGS) -I . -I $(GLFW_INCL_DIR) -DGL_GLEXT_PROTOTYPES=1 -fPIC -o $@ $<
 
-vdb_view: $(LIBOPENVDB) $(LIBVIEWER_OBJ_NAMES) cmd/openvdb_view/main.cc
+vdb_view: $(LIBOPENVDB) cmd/openvdb_view/main.cc
 	@echo "Building $@ because of $(call list_deps)"
-	$(CXX) $(CXXFLAGS) -o $@ cmd/openvdb_view/main.cc $(LIBVIEWER_OBJ_NAMES) \
-		-I . -Wl,-rpath,$(GLFW_LIB_DIR) -L$(GLFW_LIB_DIR) $(GLFW_LIB) \
-		$(LIBVIEWER_FLAGS) $(LIBS_RPATH) $(CONCURRENT_MALLOC_LIB) \
+	$(CXX) $(CXXFLAGS) -o $@ cmd/openvdb_print/main.cc -I . \
+	    $(LIBS_RPATH) $(CONCURRENT_MALLOC_LIB) \
 	    $(LIBOPENVDB_RPATH) -L$(PWD) $(LIBOPENVDB)
 endif
 
@@ -820,6 +837,8 @@ ifneq ($(strip $(wildcard $(DEPEND))),)
     include $(DEPEND)
 endif
 
+
+	    
 # Copyright (c) 2012-2013 DreamWorks Animation LLC
 # All rights reserved. This software is distributed under the
 # Mozilla Public License 2.0 ( http://www.mozilla.org/MPL/2.0/ )

@@ -68,7 +68,7 @@ endif
 # The directory into which to install libraries and header files
 # (it's recommended that this match the INSTALL_DIR in the OpenVDB
 # library makefile)
-INSTALL_DIR := /tmp/OpenVDB
+INSTALL_DIR := /usr/local
 
 # The directory into which to install Houdini SOPs
 HOUDINI_INSTALL_DIR := $(HIH)/dso
@@ -80,18 +80,18 @@ OPENVDB_LIB_DIR := $(INSTALL_DIR)/lib
 OPENVDB_LIB := -lopenvdb
 
 # The parent directory of the boost/ header directory
-BOOST_INCL_DIR := $(HT)/include
+BOOST_INCL_DIR := /usr/include
 
 # The parent directory of the OpenEXR/ header directory (which contains half.h)
-HALF_INCL_DIR := $(HT)/include
+HALF_INCL_DIR := /usr/include
 # The directory containing libHalf
-HALF_LIB_DIR := $(HDSO)
+HALF_LIB_DIR := /usr/lib
 HALF_LIB := -lHalf
 
 # The parent directory of the tbb/ header directory
-TBB_INCL_DIR := $(HT)/include
+TBB_INCL_DIR := /usr/include
 # The directory containing libtbb
-TBB_LIB_DIR := $(HDSO)
+TBB_LIB_DIR := /usr/lib
 TBB_LIB := -ltbb
 
 
@@ -136,6 +136,7 @@ endif
 
 INCLDIRS := -I . -I .. -I $(BOOST_INCL_DIR) -I $(HALF_INCL_DIR) -I $(TBB_INCL_DIR)
 
+#CXXFLAGS += -pthread $(OPTIMIZE) $(INCLDIRS) -DLINUX -DAMD64 -DUSE_PTHREADS
 CXXFLAGS += -pthread $(OPTIMIZE) $(INCLDIRS)
 ifdef MBSD
 	# Darwin ld treats undefined symbols as errors by default;
