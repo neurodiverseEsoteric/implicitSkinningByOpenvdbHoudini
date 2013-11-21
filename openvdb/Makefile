@@ -838,6 +838,40 @@ ifneq ($(strip $(wildcard $(DEPEND))),)
 endif
 
 
+helloWorld: $(LIBOPENVDB) test/helloWorld.cpp
+	@echo "Building $@ because of $(call list_deps)"
+	$(CXX) $(CXXFLAGS) -o $@ test/helloWorld.cpp -I . \
+	    $(LIBS_RPATH) $(CONCURRENT_MALLOC_LIB) \
+	    $(LIBOPENVDB_RPATH) -L$(PWD) $(LIBOPENVDB)
+
+	    
+sphere: $(LIBOPENVDB) test/sphere.cpp
+	@echo "Building $@ because of $(call list_deps)"
+	$(CXX) $(CXXFLAGS) -o $@ test/sphere.cpp -I . \
+	    $(LIBS_RPATH) $(CONCURRENT_MALLOC_LIB) \
+	    $(LIBOPENVDB_RPATH) -L$(PWD) $(LIBOPENVDB)
+	    
+	    
+combine: $(LIBOPENVDB) test/combine2Sphere.cpp
+	@echo "Building $@ because of $(call list_deps)"
+	$(CXX) $(CXXFLAGS) -o $@ test/combine2Sphere.cpp -I . \
+	    $(LIBS_RPATH) $(CONCURRENT_MALLOC_LIB) \
+	    $(LIBOPENVDB_RPATH) -L$(PWD) $(LIBOPENVDB)
+	    
+	    
+gradient: $(LIBOPENVDB) test/gradient.cpp
+	@echo "Building $@ because of $(call list_deps)"
+	$(CXX) $(CXXFLAGS) -o $@ test/gradient.cpp -I . \
+	    $(LIBS_RPATH) $(CONCURRENT_MALLOC_LIB) \
+	    $(LIBOPENVDB_RPATH) -L$(PWD) $(LIBOPENVDB)
+	    
+	    
+interpo: $(LIBOPENVDB) test/interpolation.cpp
+	@echo "Building $@ because of $(call list_deps)"
+	$(CXX) $(CXXFLAGS) -o $@ test/interpolation.cpp -I . \
+	    $(LIBS_RPATH) $(CONCURRENT_MALLOC_LIB) \
+	    $(LIBOPENVDB_RPATH) -L$(PWD) $(LIBOPENVDB)
+
 	    
 # Copyright (c) 2012-2013 DreamWorks Animation LLC
 # All rights reserved. This software is distributed under the

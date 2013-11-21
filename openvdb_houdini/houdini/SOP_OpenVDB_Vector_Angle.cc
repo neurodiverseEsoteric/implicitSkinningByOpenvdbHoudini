@@ -4,7 +4,7 @@
 ///
 /// @author maphysart
 ///
-/// @brief vertex proj node
+/// @brief vector angle node
 
 ////////////////////////////////////////
 
@@ -14,6 +14,8 @@
 #include <openvdb_houdini/GEO_PrimVDB.h>
 #include <openvdb_houdini/GU_PrimVDB.h>
 #include <openvdb_houdini/UT_VDBTools.h>
+
+#include <openvdb/tools/ValueTransformer.h>
 
 #include <UT/UT_Interrupt.h>
 #include <GEO/GEO_Point.h>
@@ -59,11 +61,8 @@ protected:
 struct Local {
 	static inline void dot(const openvdb::Vec3f& a, const openvdb::Vec3f& b, openvdb::Vec3f& result) {
 		//result.x() =  acos( a.dot(b) ) / PI * 180;
-		int k = 0;
 		result.x() =  openvdb::math::angle(a, b) / PI * 180;
-		if ( result.x() > 45 ) {
-			k = 1;
-		}
+		//result.x() =  openvdb::math::angle(a, b);
 	}
 };
 
@@ -220,6 +219,7 @@ SOP_OpenVDB_Vector_Angle::cookMySop(OP_Context &context)
         }
         
 		openvdb::VectorGrid::Ptr angleGrid = openvdb::VectorGrid::create();
+		openvdb::FloatGrid::Ptr outGrid = openvdb::FloatGrid::create();
 		
 		const openvdb::math::Transform
 			&sourceXform = gradA->transform(),
@@ -255,15 +255,13 @@ SOP_OpenVDB_Vector_Angle::cookMySop(OP_Context &context)
 				std::cout << "Resample grid A" << std::endl;
 				resampledGrid = this->resampleToMatch(*gradA, *gradB, samplingOrder);	
 				resampledGrid->setTransform(gradB->transform().copy());
-// 				angleGrid->setTransform(resampledGrid->transform().copy());
-// 				angleGrid->setTransform(openvdb::math::Transform::createLinearTransform(resampledGrid->voxelSize().x()));
 				angleGrid->tree().combine2(resampledGrid->tree(), gradB->tree(), Local::dot, false); 
-// 				gradA = resampledGrid.get();
 			} else {
 				std::cout << "Resample grid B" << std::endl;
 				resampledGrid = this->resampleToMatch(*gradB, *gradA, samplingOrder);
 				resampledGrid->setTransform(gradA->transform().copy());
 				angleGrid->setTransform(resampledGrid->transform().copy());
+				outGrid->setTransform(resampledGrid->transform().copy());
 				
 				const openvdb::math::Transform &Xform = angleGrid->transform();
 				openvdb::Mat4R xform = Xform.baseMap()->getAffineMap()->getMat4();
@@ -280,17 +278,30 @@ SOP_OpenVDB_Vector_Angle::cookMySop(OP_Context &context)
 			angleGrid->tree().combine2(gradA->tree(), gradB->tree(), Local::dot, false); 
 		}
 
-		// use the same name as the output group name 
-		GEO_PrimVDB* vdb = hvdb::createVdbPrimitive(*gdp, angleGrid, groupStr.toStdString().c_str());
+		openvdb::FloatGrid::Accessor accessor = outGrid->getAccessor();
 		
-		if (group) group->add(vdb);
+		for (openvdb::VectorGrid::ValueOnCIter iter = angleGrid->cbeginValueOn(); iter.test(); ++iter) {
+			const openvdb::Vec3f& value = *iter;
+			if (iter.isVoxelValue()) { // set a single voxel
+				accessor.setValue(iter.getCoord(), value.x());
+			} else { // fill an entire tile
+				openvdb::CoordBBox bbox;
+				iter.getBoundingBox(bbox);
+				accessor.getTree()->fill(bbox, value.x());
+			}
+		}
 		
 		std::cout << "gradient dot angle values are : " << std::endl;
-		for (openvdb::VectorGrid::ValueOnIter iter = angleGrid->beginValueOn(); iter; ++iter) {
-			openvdb::Vec3f value = iter.getValue();
+		for (openvdb::FloatGrid::ValueOnCIter iter = outGrid->cbeginValueOn(); iter; ++iter) {
+			float value = iter.getValue();
 // 			if ( value.x() > 0 ) 
-			std::cout << "Grid world" << angleGrid->constTransform().indexToWorld(iter.getCoord()) << " index" << iter.getCoord() << " = " << value.x() << std::endl;
+			std::cout << "Grid world" << outGrid->constTransform().indexToWorld(iter.getCoord()) << " index" << iter.getCoord() << " = " << value << std::endl;
 		}
+		
+		// use the same name as the output group name 
+		GEO_PrimVDB* vdb = hvdb::createVdbPrimitive(*gdp, outGrid, groupStr.toStdString().c_str());
+		
+		if (group) group->add(vdb);
 		
 	} catch (std::exception& e) {
 		addError(SOP_MESSAGE, e.what());
