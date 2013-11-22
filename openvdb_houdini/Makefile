@@ -221,6 +221,7 @@ HOUDINI_SOP_SRC_NAMES := \
     houdini/SOP_OpenVDB_Vertex_Proj.cc \
     houdini/SOP_OpenVDB_Vector_Angle.cc \
     houdini/SOP_OpenVDB_Implicit_Surf.cc \
+    houdini/SOP_OpenVDB_Remapangle.cc \
 #
 HOUDINI_SOP_NAMES := $(basename $(notdir $(HOUDINI_SOP_SRC_NAMES)))
 

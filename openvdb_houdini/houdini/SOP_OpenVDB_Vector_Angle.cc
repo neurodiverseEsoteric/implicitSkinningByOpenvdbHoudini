@@ -61,8 +61,8 @@ protected:
 struct Local {
 	static inline void dot(const openvdb::Vec3f& a, const openvdb::Vec3f& b, openvdb::Vec3f& result) {
 		//result.x() =  acos( a.dot(b) ) / PI * 180;
-		result.x() =  openvdb::math::angle(a, b) / PI * 180;
-		//result.x() =  openvdb::math::angle(a, b);
+		//result.x() =  openvdb::math::angle(a, b) / PI * 180;
+		result.x() =  openvdb::math::angle(a, b);
 	}
 };
 
@@ -208,7 +208,7 @@ SOP_OpenVDB_Vector_Angle::cookMySop(OP_Context &context)
 		/*
 		 *  Calculate the angle between two gradient vector field
 		 */
-		hvdb::Interrupter progress("Projecting vertex based on vdb grid");
+		hvdb::Interrupter progress("Calculate vector angle based on two gradient vector grid");
 		
 		// Create a group for the grid primitives.
         GA_PrimitiveGroup* group = NULL;
