@@ -155,7 +155,7 @@ SOP_OpenVDB_Remapangle::cookMySop(OP_Context& context)
 			
 				outGrid->setTransform(grid->transform().copy());
 				openvdb::FloatGrid::ValueOnCIter iter = openvdb::gridPtrCast<openvdb::FloatGrid>(grid->deepCopyGrid())->cbeginValueOn();
-				for (; iter; ++iter) {
+				for (; iter.test(); ++iter) {
 					const float value = *iter;
 					float temp;
 					if (value <= alpha1)
