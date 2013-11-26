@@ -24,6 +24,8 @@
 
 #include <math.h>       /* exp */
 
+#define PI 3.1415926535897931
+#define PI4 0.785398163
 #define PI180 0.017453293
 
 namespace hvdb = openvdb_houdini;
@@ -136,7 +138,6 @@ SOP_OpenVDB_Remapangle::cookMySop(OP_Context& context)
 		evalString(groupStr, "group", 0, time);
 	    const GA_PrimitiveGroup *group = matchGroup(*gdp, groupStr.toStdString());
 		
-		
 		hvdb::Interrupter progress("Remap angle according to remap function.");
 		
 		for (hvdb::VdbPrimIterator it(gdp, group); it; ++it) {
@@ -166,7 +167,6 @@ SOP_OpenVDB_Remapangle::cookMySop(OP_Context& context)
 					j++;
 				}
 				
-				// for debug
 // 				std::cout << "remap grid value are : " << std::endl;
 // 				for (openvdb::FloatGrid::ValueOnIter iter = grid->beginValueOn(); iter.test(); ++iter){
 // 					float value = iter.getValue();

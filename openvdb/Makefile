@@ -872,6 +872,12 @@ interpo: $(LIBOPENVDB) test/interpolation.cpp
 	    $(LIBS_RPATH) $(CONCURRENT_MALLOC_LIB) \
 	    $(LIBOPENVDB_RPATH) -L$(PWD) $(LIBOPENVDB)
 
+
+blend: $(LIBOPENVDB) test/blendGrid.cpp
+	@echo "Building $@ because of $(call list_deps)"
+	$(CXX) $(CXXFLAGS) -o $@ test/blendGrid.cpp -I . \
+	    $(LIBS_RPATH) $(CONCURRENT_MALLOC_LIB) \
+	    $(LIBOPENVDB_RPATH) -L$(PWD) $(LIBOPENVDB)
 	    
 # Copyright (c) 2012-2013 DreamWorks Animation LLC
 # All rights reserved. This software is distributed under the
