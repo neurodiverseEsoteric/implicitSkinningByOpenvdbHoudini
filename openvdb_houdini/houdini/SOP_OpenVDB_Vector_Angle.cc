@@ -61,8 +61,8 @@ protected:
 struct Local {
 	static inline void dot(const openvdb::Vec3f& a, const openvdb::Vec3f& b, openvdb::Vec3f& result) {
 		//result.x() =  acos( a.dot(b) ) / PI * 180;
-		//result.x() =  openvdb::math::angle(a, b) / PI * 180;
-		result.x() =  openvdb::math::angle(a, b);
+		result.x() =  openvdb::math::angle(a, b) / PI * 180;
+		//result.x() =  openvdb::math::angle(a, b);
 	}
 };
 
@@ -291,12 +291,12 @@ SOP_OpenVDB_Vector_Angle::cookMySop(OP_Context &context)
 			}
 		}
 		
-		std::cout << "gradient dot angle values are : " << std::endl;
-		for (openvdb::FloatGrid::ValueOnCIter iter = outGrid->cbeginValueOn(); iter; ++iter) {
-			float value = iter.getValue();
-// 			if ( value.x() > 0 ) 
-			std::cout << "Grid world" << outGrid->constTransform().indexToWorld(iter.getCoord()) << " index" << iter.getCoord() << " = " << value << std::endl;
-		}
+// 		std::cout << "gradient dot angle values are : " << std::endl;
+// 		for (openvdb::FloatGrid::ValueOnCIter iter = outGrid->cbeginValueOn(); iter; ++iter) {
+// 			float value = iter.getValue();
+// // 			if ( value.x() > 0 ) 
+// 			std::cout << "Grid world" << outGrid->constTransform().indexToWorld(iter.getCoord()) << " index" << iter.getCoord() << " = " << value << std::endl;
+// 		}
 		
 		// use the same name as the output group name 
 		GEO_PrimVDB* vdb = hvdb::createVdbPrimitive(*gdp, outGrid, groupStr.toStdString().c_str());

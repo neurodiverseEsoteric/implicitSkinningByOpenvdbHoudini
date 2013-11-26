@@ -60,6 +60,10 @@
 # to set those two environment variables.)
 #
 
+CC=clang 
+CXX=clang++
+
+
 ifeq (,$(HFS))
 $(warning Warning: $$(HFS) is not set; did you source houdini_setup?)
 endif

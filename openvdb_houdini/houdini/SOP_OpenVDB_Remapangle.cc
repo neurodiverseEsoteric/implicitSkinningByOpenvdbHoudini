@@ -14,6 +14,7 @@
 #include <openvdb_houdini/GEO_PrimVDB.h>
 #include <openvdb_houdini/GU_PrimVDB.h>
 #include <openvdb_houdini/UT_VDBTools.h>
+#include <openvdb_houdini/UT_VDBUtils.h>
 
 #include <UT/UT_Interrupt.h>
 #include <GEO/GEO_Point.h>
@@ -23,8 +24,7 @@
 
 #include <math.h>       /* exp */
 
-#define PI 3.1415926535897931
-#define PI4 0.78539816339
+#define PI180 0.017453293
 
 namespace hvdb = openvdb_houdini;
 namespace hutil = houdini_utils;
@@ -39,16 +39,16 @@ public:
     //virtual void getDescriptiveParmName(UT_String& s) const { s = "file_name"; }
     
 	static OP_Node* factory(OP_Network*, const char* name, OP_Operator*);
-	double kaba(double ratio){ return 1.0 - exp(1.0 - 1.0 / ( 1 - exp(1 - 1.0/ratio))); };
 	
 protected:
     /// Method to cook geometry for the SOP
     virtual OP_ERROR		 cookMySop(OP_Context &context);
 
+private:
+	double kaba(double ratio){ return 1.0 - exp(1.0 	- 1.0 / ( 1 - exp(1 - 1.0/ratio))); };
 };
 
 ////////////////////////////////////////
-
 
 
 OP_Node* 
@@ -119,10 +119,10 @@ SOP_OpenVDB_Remapangle::cookMySop(OP_Context& context)
 {
     try {
         hutil::ScopedInputLock lock(*this, context);
-
         const fpreal time = context.getTime();
-		gdp->clearAndDestroy();
+		duplicateSource(0, context);
 
+		
 		float alpha1 = evalFloat("alpha1", 0, time);
 		float alpha2 = evalFloat("alpha2", 0, time);
 		float alpha3 = evalFloat("alpha3", 0, time);
@@ -132,32 +132,24 @@ SOP_OpenVDB_Remapangle::cookMySop(OP_Context& context)
 		float w1 = evalFloat("w1", 0, time);		
 		float w2 = evalFloat("w2", 0, time);		
 		
-        // Get the group of grids to be transformed.
-		
-		const GU_Detail* vdbA = inputGeo(0, context);
-		
-		UT_String groupAStr;
-		evalString(groupAStr, "group", 0, time);
-		const GA_PrimitiveGroup *group = matchGroup(const_cast<GU_Detail&>(*vdbA), groupAStr.toStdString());
+		UT_String groupStr;
+		evalString(groupStr, "group", 0, time);
+	    const GA_PrimitiveGroup *group = matchGroup(*gdp, groupStr.toStdString());
 		
 		
 		hvdb::Interrupter progress("Remap angle according to remap function.");
-
-		openvdb::FloatGrid::Ptr outGrid = openvdb::FloatGrid::create();
-		openvdb::FloatGrid::Accessor accessor = outGrid->getAccessor();
 		
-		const hvdb::Grid * grid = NULL;
-		for (hvdb::VdbPrimCIterator it(vdbA, group); it; ++it) {
-			const GU_PrimVDB* vdb = *it;
-			grid = &vdb->getGrid();
-			if (grid->isType<openvdb::FloatGrid>()){
-				if (progress.wasInterrupted()) throw std::runtime_error("was interrupted");	
+		for (hvdb::VdbPrimIterator it(gdp, group); it; ++it) {
+			if (progress.wasInterrupted()) 
+				throw std::runtime_error("was interrupted");	
 			
-				outGrid->setTransform(grid->transform().copy());
-				openvdb::FloatGrid::ValueOnCIter iter = openvdb::gridPtrCast<openvdb::FloatGrid>(grid->deepCopyGrid())->cbeginValueOn();
-				for (; iter.test(); ++iter) {
-					const float value = *iter;
-					float temp;
+			GU_PrimVDB* vdb = *it;
+			if (vdb->getGrid().isType<openvdb::FloatGrid>()){
+				openvdb::FloatGrid *  grid = static_cast<openvdb::FloatGrid *>(&vdb->getGrid());
+// 				int success = UTvdbProcessTypedGrid(UTvdbGetGridType(vdb->getGrid()), &vdb->getGrid(), Op);
+				int j = 0;
+				for (openvdb::FloatGrid::ValueOnIter iter = grid->beginValueOn(); iter.test(); ++iter){
+					float value = iter.getValue() * PI180, temp;
 					if (value <= alpha1)
 						temp = theta1;
 					else if (value >= alpha3)
@@ -170,35 +162,19 @@ SOP_OpenVDB_Remapangle::cookMySop(OP_Context& context)
 							temp = pow(kaba( (value - alpha2) / (alpha3 - alpha2 ) ), w2) * ( theta3 - theta2 ) + theta2;
 						}	
 					}
-					
-					// set value	
-					if (iter.isVoxelValue()) {
-						accessor.setValue(iter.getCoord(), temp);
-					} else {
-						openvdb::CoordBBox bbox;
-						iter.getBoundingBox(bbox);
-						accessor.getTree()->fill(bbox, temp);
-					}
-					
+					iter.setValue(temp);
+					j++;
 				}
-
-			}
+				
+				// for debug
+// 				std::cout << "remap grid value are : " << std::endl;
+// 				for (openvdb::FloatGrid::ValueOnIter iter = grid->beginValueOn(); iter.test(); ++iter){
+// 					float value = iter.getValue();
+// 		// 			if ( value.x() > 0 ) 
+// 					std::cout << "Grid world" << grid->constTransform().indexToWorld(iter.getCoord()) << " index" << iter.getCoord() << " = " << value << std::endl;
+// 				}
+			}	
 		}
-		
-		std::cout << "gradient remap angle values are : " << std::endl;
-		for (openvdb::FloatGrid::ValueOnCIter iter = outGrid->cbeginValueOn(); iter; ++iter) {
-			float value = iter.getValue();
-// 			if ( value.x() > 0 ) 
-			std::cout << "Grid world" << outGrid->constTransform().indexToWorld(iter.getCoord()) << " index" << iter.getCoord() << " = " << value << std::endl;
-		}
-		
-		GA_PrimitiveGroup* rgroup = NULL;
-        if(groupAStr.isstring()) {
-            rgroup = gdp->newPrimitiveGroup(groupAStr.buffer());
-        }
-        
-		GEO_PrimVDB* rvdb = hvdb::createVdbPrimitive(*gdp, outGrid, groupAStr.toStdString().c_str());
-		if (group) rgroup->add(rvdb);
 		
 	} catch (std::exception& e) {
 		addError(SOP_MESSAGE, e.what());
