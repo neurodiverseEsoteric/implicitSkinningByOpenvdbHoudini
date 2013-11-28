@@ -44,8 +44,8 @@ public:
 protected:
     /// Method to cook geometry for the SOP
     virtual OP_ERROR		 cookMySop(OP_Context &context);
-	void fillVDB(openvdb::FloatGrid::Ptr grid, const openvdb::CoordBBox& indexBB, float voxelSize, const HRBF_fit<float, 3, Rbf_pow3<float> >& hrbf);
-
+	void fillVDB(openvdb::FloatGrid::Ptr grid, const openvdb::CoordBBox& bbox, const HRBF_fit<float, 3, Rbf_pow3<float> >& hrbf, float voxelSize, float radius);
+	float remap(float value, float r);
 private:
 
 };
@@ -77,6 +77,22 @@ SOP_OpenVDB_Implicit_Surf::writeNowCallback(
         return 1;
     }
     return 0;
+}
+
+
+float
+SOP_OpenVDB_Implicit_Surf::remap(float value, float r)
+{
+	float ratio1, ratio2;
+    if(value < -r) {
+		return 1;
+    }else if(value > r) {
+		return 0;
+	}else{
+		ratio1 = value / r;
+		ratio2 = ratio1 * ratio1;
+		return -3.0f / 16 * ratio2 * ratio2 * ratio1 + 5.0f / 8 * ratio2 * ratio1 - 15.0f / 16 * ratio1 + 0.5f;
+	}
 }
 
 
@@ -122,7 +138,7 @@ newSopOperator(OP_OperatorTable* table)
 
 
 void
-SOP_OpenVDB_Implicit_Surf::fillVDB(openvdb::FloatGrid::Ptr grid, const openvdb::CoordBBox& bbox, float voxelSize, const HRBF_fit<float, 3, Rbf_pow3<float> >& hrbf)
+SOP_OpenVDB_Implicit_Surf::fillVDB(openvdb::FloatGrid::Ptr grid, const openvdb::CoordBBox& bbox, const HRBF_fit<float, 3, Rbf_pow3<float> >& hrbf, float voxelSize, float radius)
 {
 	openvdb::FloatGrid::Accessor accessor = grid->getAccessor();
 	
@@ -132,6 +148,7 @@ SOP_OpenVDB_Implicit_Surf::fillVDB(openvdb::FloatGrid::Ptr grid, const openvdb::
 	openvdb::Int32 maxY = static_cast<openvdb::Int32>(bbox.max().y() / voxelSize), minY = static_cast<openvdb::Int32>(bbox.min().y() / voxelSize);
 	openvdb::Int32 maxZ = static_cast<openvdb::Int32>(bbox.max().z() / voxelSize), minZ = static_cast<openvdb::Int32>(bbox.min().z() / voxelSize);
 	
+	float r = voxelSize * radius, value;
 	for (openvdb::Int32 i = minX; i <= maxX; ++i) {
 		for (openvdb::Int32 j = minY; j <= maxY; ++j) {
 			for (openvdb::Int32 k = minZ; k <= maxZ; ++k) {
@@ -142,13 +159,14 @@ SOP_OpenVDB_Implicit_Surf::fillVDB(openvdb::FloatGrid::Ptr grid, const openvdb::
 				std::cout << "pos: " << i << " " << j << " " << k << " " << std::endl;
 				std::cout << pos << std::endl;
 				// compute level set function value
-				float value = hrbf.eval(pos);
-				std::cout << "value: " << value << std::endl;
+				value = hrbf.eval(pos);
+				value = remap(value, r);
+// 				std::cout << "value: " << value << std::endl;
 				accessor.setValue(openvdb::Coord(i, j, k), value);
 			}
 		}
 	}	
-
+	
 	grid->setTransform(openvdb::math::Transform::createLinearTransform(voxelSize));
 }
 
@@ -221,11 +239,11 @@ SOP_OpenVDB_Implicit_Surf::cookMySop(OP_Context &context)
 		HRBF_fit< float, 3, Rbf_pow3<float> > hrbf_surf;
 		hrbf_surf.hermite_fit(points, normals);
 		
-		std::cout << "fit surface " << std::endl;
-		std::cout << "alphas: " << std::endl;
-		std::cout << hrbf_surf._alphas << std::endl;
-		std::cout << "betas: " << std::endl;
-		std::cout << hrbf_surf._betas << std::endl;
+// 		std::cout << "fit surface " << std::endl;
+// 		std::cout << "alphas: " << std::endl;
+// 		std::cout << hrbf_surf._alphas << std::endl;
+// 		std::cout << "betas: " << std::endl;
+// 		std::cout << hrbf_surf._betas << std::endl;
 		
 		// make the vdb grid and gradient grid by hrbf
 		openvdb::GridPtrSet outGrids;
@@ -238,7 +256,7 @@ SOP_OpenVDB_Implicit_Surf::cookMySop(OP_Context &context)
 // 		std::cout << coordAsString(bbox.min(),",") << std::endl;
 // 		std::cout << coordAsString(bbox.max(),",") << std::endl;
 		
-		fillVDB(outGrid, bbox, voxelSize, hrbf_surf);
+		fillVDB(outGrid, bbox, hrbf_surf, voxelSize, radius);
 		outGrid->setName(vdbNameStr.toStdString());
 		
 		openvdb::VectorGrid::Ptr outGradGrid = openvdb::tools::gradient(*outGrid);

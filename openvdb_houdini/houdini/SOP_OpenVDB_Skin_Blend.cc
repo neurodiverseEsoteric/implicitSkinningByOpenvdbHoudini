@@ -121,7 +121,7 @@ newSopOperator(OP_OperatorTable* table)
 		.setHelpText("Output vector angle grid name."));
 	
 	// Register this operator.
-    hvdb::OpenVDBOpFactory("OpenVDB Vector Angle", SOP_OpenVDB_Skin_Blend::factory, parms, *table)
+    hvdb::OpenVDBOpFactory("OpenVDB Skin Blend", SOP_OpenVDB_Skin_Blend::factory, parms, *table)
 		.addInput("VDBA")
 		.addInput("VDBB")
 		.addInput("VDBC");
@@ -222,12 +222,12 @@ SOP_OpenVDB_Skin_Blend::cookMySop(OP_Context &context)
 		const hvdb::GU_PrimVDB *pgradC = NULL;
 		for (hvdb::VdbPrimCIterator it(vdbC, groupC); it; ++it) {
 			const std::string gridName = it.getPrimitiveName().toStdString();
-			if ( gridName.compare( valueNameStr.toStdString() ) == 0 )
+			if ( gridName.compare( thetaNameStr.toStdString() ) == 0 )
 				pgradC = *it;
 		}
 		
 		openvdb::FloatGrid::Ptr gridA, gridB, gridC;
-		if ( pgradA != NULL && pgradB != NULL ) {
+		if ( pgradA != NULL && pgradB != NULL && pgradC != NULL ) {
 			gridA = openvdb::gridPtrCast<openvdb::FloatGrid>( pgradA->getGrid().deepCopyGrid() );	
 			gridB = openvdb::gridPtrCast<openvdb::FloatGrid>( pgradB->getGrid().deepCopyGrid() );	
 			gridC = openvdb::gridPtrCast<openvdb::FloatGrid>( pgradC->getGrid().deepCopyGrid() );	
@@ -309,7 +309,7 @@ SOP_OpenVDB_Skin_Blend::cookMySop(OP_Context &context)
 		UT_String blendNameStr;
 		evalString(blendNameStr, "blendName", 0, time);
 		
-		openvdb::FloatGrid *  blendPtr = NULL;
+		openvdb::FloatGrid::Ptr blendGrid;
 		
 		openvdb::io::File file(filename);
         file.open();
@@ -320,49 +320,47 @@ SOP_OpenVDB_Skin_Blend::cookMySop(OP_Context &context)
 			const std::string& gridName = nameIter.gridName();
 			if (!UT_String(gridName).multiMatch(blendNameStr.buffer(), 1, " ")) continue;
 			
-			hvdb::GridPtr blendGrid = file.readGrid(gridName);
+			hvdb::GridPtr baseGrid = file.readGrid(gridName);
 	
-            if (blendGrid) {
-				blendPtr = static_cast<openvdb::FloatGrid *>(blendGrid.get());
+            if (baseGrid) {
+				blendGrid = openvdb::gridPtrCast<openvdb::FloatGrid>(baseGrid);
+// 				blendPtr = static_cast<openvdb::FloatGrid *>(blendGrid.get());
+			} else{ 
+				throw std::runtime_error("Cannot find blend grid file.");
 			}
 			
 		}
-		if (blendPtr == NULL){
-			throw std::runtime_error("Cannot find blend grid file.");
-		}	
-		openvdb::math::Transform& gridform = blendPtr->transform();
-		
-
+			
 		/*
 		 * blend two grids based on gradient
 		 */
-		openvdb::FloatGrid::Accessor accessorA = gridA->getAccessor();
-		openvdb::FloatGrid::Accessor accessorB = gridB->getAccessor();
-		openvdb::FloatGrid::Accessor accessorC = gridC->getAccessor();
+
+		const openvdb::math::Transform &gridXform = outGrid->constTransform();
 		
 		for (openvdb::FloatGrid::ValueOnIter iter = outGrid->beginValueOn(); iter.test(); ++iter) {
 			openvdb::Coord xyz = iter.getCoord();
+			openvdb::Vec3f worldPt = gridXform.indexToWorld(xyz);
+			
 			float a, b, t, value;
 			if (iter.isVoxelValue()) { // set a single voxel
-				a = accessorA.getValue(xyz);
-				b = accessorB.getValue(xyz);
-				t = accessorC.getValue(xyz);
-				
-				openvdb::Vec3f vpos = openvdb::Vec3f(a, b, t);
-				vpos = gridform.worldToIndex(vpos);
-				openvdb::tools::BoxSampler::sample(blendPtr->tree(), vpos, value);
-				
+				openvdb::Vec3f apos = gridA->worldToIndex(worldPt);
+				openvdb::tools::PointSampler::sample(gridA->tree(), apos, a);
+				apos = gridB->worldToIndex(worldPt);
+				openvdb::tools::PointSampler::sample(gridB->tree(), apos, b);
+				apos = gridC->worldToIndex(worldPt);
+				openvdb::tools::PointSampler::sample(gridC->tree(), apos, t);
+
+				openvdb::tools::BoxSampler::sample(blendGrid->tree(), vpos, value);
 				iter.setValue(value);
-				
 			}
 		}
 		
-		std::cout << "blend field are : " << std::endl;
-		for (openvdb::FloatGrid::ValueOnCIter iter = outGrid->cbeginValueOn(); iter; ++iter) {
-			float value = iter.getValue();
-			std::cout << "Grid world" << outGrid->constTransform().indexToWorld(iter.getCoord()) << " index" << iter.getCoord() << " = " << value << std::endl;
-		}
-		
+// 		std::cout << "blend field are : " << std::endl;
+// 		for (openvdb::FloatGrid::ValueOnCIter iter = outGrid->cbeginValueOn(); iter; ++iter) {
+// 			float value = iter.getValue();
+// 			std::cout << "Grid world" << outGrid->constTransform().indexToWorld(iter.getCoord()) << " index" << iter.getCoord() << " = " << value << std::endl;
+// 		}
+
 		// use the same name as the output group name 
 		GEO_PrimVDB* vdb = hvdb::createVdbPrimitive(*gdp, outGrid, groupStr.toStdString().c_str());
 		if (group) group->add(vdb);
