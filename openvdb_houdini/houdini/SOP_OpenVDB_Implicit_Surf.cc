@@ -142,7 +142,7 @@ SOP_OpenVDB_Implicit_Surf::fillVDB(openvdb::FloatGrid::Ptr grid, const openvdb::
 {
 	openvdb::FloatGrid::Accessor accessor = grid->getAccessor();
 	
-	std::cout << "Fill vdb :" << std::endl;
+// 	std::cout << "Fill vdb :" << std::endl;
 	
 	openvdb::Int32 maxX = static_cast<openvdb::Int32>(bbox.max().x() / voxelSize), minX = static_cast<openvdb::Int32>(bbox.min().x() / voxelSize);
 	openvdb::Int32 maxY = static_cast<openvdb::Int32>(bbox.max().y() / voxelSize), minY = static_cast<openvdb::Int32>(bbox.min().y() / voxelSize);
@@ -156,8 +156,8 @@ SOP_OpenVDB_Implicit_Surf::fillVDB(openvdb::FloatGrid::Ptr grid, const openvdb::
 				Eigen::Matrix<float, 3, 1> pos;
 				pos(0) = i * voxelSize; pos(1) = j * voxelSize; pos(2) = k * voxelSize;
 				
-				std::cout << "pos: " << i << " " << j << " " << k << " " << std::endl;
-				std::cout << pos << std::endl;
+// 				std::cout << "pos: " << i << " " << j << " " << k << " " << std::endl;
+// 				std::cout << pos << std::endl;
 				// compute level set function value
 				value = hrbf.eval(pos);
 				value = remap(value, r);
@@ -258,9 +258,11 @@ SOP_OpenVDB_Implicit_Surf::cookMySop(OP_Context &context)
 		
 		fillVDB(outGrid, bbox, hrbf_surf, voxelSize, radius);
 		outGrid->setName(vdbNameStr.toStdString());
+		outGrid->tree().prune();
 		
 		openvdb::VectorGrid::Ptr outGradGrid = openvdb::tools::gradient(*outGrid);
 		outGradGrid->setName(vdbGradNameStr.toStdString());
+		outGradGrid->tree().prune();
 		
 		outGrids.insert(outGrid);
 		outGrids.insert(outGradGrid);

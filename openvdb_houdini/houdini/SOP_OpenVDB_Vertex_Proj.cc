@@ -22,6 +22,10 @@
 #include <limits>   		// std::numeric_limits
 #include <string>		// std::string::compare
 
+#include <algorithm>		// std::max
+#include <math.h>    	// fabs 
+#include <boost/dynamic_bitset.hpp>
+
 namespace hvdb = openvdb_houdini;
 namespace hutil = houdini_utils;
 
@@ -77,10 +81,14 @@ newSopOperator(OP_OperatorTable* table)
 
     hutil::ParmList parms;
 	
-	parms.add(hutil::ParmFactory(PRM_STRING, "group",  "Group")
+	parms.add(hutil::ParmFactory(PRM_STRING, "groupA",  "Group A")
 		.setChoiceList(&hutil::PrimGroupMenu)
 		.setHelpText("Choose only a subset of the input vdb grids."));
 			
+	parms.add(hutil::ParmFactory(PRM_STRING, "groupB",  "Group B")
+		.setChoiceList(&hutil::PrimGroupMenu)
+		.setHelpText("Choose only a subset of the input vdb grids."));
+	
 	parms.add(hutil::ParmFactory(PRM_STRING, "gridName", "Value Grid Name")
 		.setDefault(0, "valueGrid")
         .setHelpText("value grid name."));
@@ -89,9 +97,13 @@ newSopOperator(OP_OperatorTable* table)
 		.setDefault(0, "gradGrid")
         .setHelpText("gradient grid name."));
 	
+	parms.add(hutil::ParmFactory(PRM_STRING, "angleName", "Angle Grid Name")
+		.setDefault(0, "angleGrid")
+        .setHelpText("Angle grid name."));
+	
 	parms.add(hutil::ParmFactory(PRM_FLT_J, "error", "Error Bound")
         .setDefault(PRMzeroDefaults)
-        .setRange(PRM_RANGE_RESTRICTED, 0, PRM_RANGE_UI, 0.2));
+        .setRange(PRM_RANGE_RESTRICTED, 0, PRM_RANGE_UI, 0.1));
 	
 	parms.add(hutil::ParmFactory(PRM_INT, "iter", "Iterations")
         .setDefault(PRMfiveDefaults)
@@ -104,6 +116,7 @@ newSopOperator(OP_OperatorTable* table)
     // Register this operator.
     hvdb::OpenVDBOpFactory("OpenVDB Vertex Proj", SOP_OpenVDB_Vertex_Proj::factory, parms, *table)
 		.addInput("Polygon Mesh")
+		.addInput("VDBs")
 		.addInput("VDBs");
 }
 
@@ -126,91 +139,195 @@ SOP_OpenVDB_Vertex_Proj::cookMySop(OP_Context &context)
 		/*
 		 * Get params
 		 */
-		const GU_Detail* vdbGdp = inputGeo(1, context);
-        
+		const GU_Detail* vdbAGdp = inputGeo(1, context);
+		const GU_Detail* vdbBGdp = inputGeo(2, context);
+		
 		mError = evalFloat("error", 0, time);
 		mIterations = evalInt("iter", 0, time);
 		mStopAngle = evalFloat("angle", 0, time);
 		
 		UT_String gridNameStr;
 		evalString(gridNameStr, "gridName", 0, time);
+		
 		UT_String gradNameStr;
 		evalString(gradNameStr, "gradName", 0, time);
 		
-		UT_String groupStr;
-        evalString(groupStr, "group", 0, time);
-		const GA_PrimitiveGroup *group = matchGroup(const_cast<GU_Detail&>(*vdbGdp), groupStr.toStdString());
+		UT_String angleNameStr;
+		evalString(angleNameStr, "angleName", 0, time);
 		
-		std::cout << "Required grid name : " << gridNameStr.toStdString() << std::endl;
-		std::cout << "Required gradient name : " << gradNameStr.toStdString() << std::endl;
+		
+		UT_String groupAStr;
+		evalString(groupAStr, "groupA", 0, time);
+		const GA_PrimitiveGroup *groupA = matchGroup(const_cast<GU_Detail&>(*vdbAGdp), groupAStr.toStdString());
+		
+		UT_String groupBStr;
+		evalString(groupBStr, "groupB", 0, time);
+		const GA_PrimitiveGroup *groupB = matchGroup(const_cast<GU_Detail&>(*vdbBGdp), groupBStr.toStdString());
+		
+// 		std::cout << "Required grid name : " << gridNameStr.toStdString() << std::endl;
+// 		std::cout << "Required gradient name : " << gradNameStr.toStdString() << std::endl;
 		const hvdb::GU_PrimVDB *pgrid = NULL, *pgrad = NULL;
-		for (hvdb::VdbPrimCIterator it(vdbGdp, group); it; ++it) {
+		for (hvdb::VdbPrimCIterator it(vdbAGdp, groupA); it; ++it) {
 			const std::string gridName = it.getPrimitiveName().toStdString();
-			std::cout << "Grid name : " << gridName << std::endl;
+// 			std::cout << "Grid name : " << gridName << std::endl;
 			if ( gridName.compare( gridNameStr.toStdString() ) == 0 )
 				pgrid = *it;
 			if ( gridName.compare( gradNameStr.toStdString() ) == 0 )
 				pgrad = *it;
 		}
 		
-		openvdb::FloatGrid::Ptr grid;
+		const hvdb::GU_PrimVDB *pangle = NULL;
+		for (hvdb::VdbPrimCIterator it(vdbBGdp, groupB); it; ++it) {
+			const std::string gridName = it.getPrimitiveName().toStdString();
+// 			std::cout << "Grid name : " << gridName << std::endl;
+			if ( gridName.compare( angleNameStr.toStdString() ) == 0 )
+				pangle = *it;
+		}
+		
+		openvdb::FloatGrid::Ptr grid, angle;
 		openvdb::VectorGrid::Ptr grad;
-		if ( pgrid != NULL && pgrad != NULL ) {
+		if (pgrid != NULL && pgrad != NULL && pangle != NULL) {
 			grid = openvdb::gridPtrCast<openvdb::FloatGrid>( pgrid->getGrid().deepCopyGrid() );
-			grad = openvdb::gridPtrCast<openvdb::VectorGrid>( pgrad->getGrid().deepCopyGrid() );	
+			grad = openvdb::gridPtrCast<openvdb::VectorGrid>( pgrad->getGrid().deepCopyGrid() );
+			angle = openvdb::gridPtrCast<openvdb::FloatGrid>( pangle->getGrid().deepCopyGrid() );
 		}
 		else{
 			throw std::runtime_error("Cannot find value or gradient grid.");
 		}
-		// gradient and grid have same transform
-		openvdb::math::Transform& gridform = grid->transform();
 
+		GA_ROHandleS	 neighbours(gdp->findStringTuple(GA_ATTRIB_POINT,"Neighbours",1));
+		if (!neighbours.isValid())
+			throw std::runtime_error("Cannot find attribute Neighbours");
 		
+		openvdb::math::Transform& gridform = grid->transform(); 		// gradient and grid have same transform
+		openvdb::math::Transform& angleform = angle->transform();
+
 		/*
 		 * Project 
 		 */
 		hvdb::Interrupter progress("Projecting vertex based on vdb grid");
-		fpreal error = std::numeric_limits<double>::max();
 		
 		//pHandle(gdp->findAttribute(GA_ATTRIB_POINT, "nearList"));
 		GA_ROHandleR restVHandle(gdp->findAttribute(GA_ATTRIB_POINT, "restValue"));
-		GA_RWHandleV3 pHandle(gdp->getP());
+		GA_RWHandleV3 pHandle(gdp->getP());	
 		
-		for ( uint i = 0; i < mIterations && error > mError; i++ ){
-				
-			if (progress.wasInterrupted()) {
-                throw std::runtime_error("Projection was interrupted");
-			}
-            
-            	float value;
-			openvdb::Vec3f vec, delta;
-			GA_Offset ptoff;
+		
+		GA_Offset pointCount = 0;
+		for (GA_Iterator it(gdp->getPointRange()); !it.atEnd(); it.advance()){
+			pointCount++;
+		}
 			
-			int total = 0;
-			for (GA_Iterator it(gdp->getPointRange()); !it.atEnd(); it.advance())
-			{
-				total++;
-				ptoff = it.getOffset();
-				UT_Vector3 pos = pHandle.get(ptoff);
-				fpreal restv = restVHandle.get(ptoff);
-				
-				openvdb::Vec3f vpos = openvdb::Vec3f(pos.x(), pos.y(), pos.z());
-				vpos = gridform.worldToIndex(vpos);
-				
-				openvdb::tools::BoxSampler::sample(grid->tree(), vpos, value);
-				openvdb::tools::BoxSampler::sample(grad->tree(), vpos, vec);
 			
-				// find the point attr neighboutList and valueRest
-				delta = vec * ( omega * (value - restv) / vec.lengthSqr() );
-				pos.x() += delta.x();
-				pos.y() += delta.y();
-				pos.z() += delta.z();
+		boost::dynamic_bitset<> negProj(pointCount);
+		
+		int step = 1;
+		while( step <= mIterations ){
+			if ( step % 3 != 0 ) {
+				// Projection step
+				for (GA_Iterator it(gdp->getPointRange()); !it.atEnd(); it.advance())
+				{
+					if(progress.wasInterrupted()) {
+						throw std::runtime_error("Projection was interrupted");
+					}
+					
+					openvdb::Vec3f vec, delta;
+					float value, angleValue;
+					UT_Vector3 pos;
+					
+					GA_Offset ptoff = it.getOffset();
+					if (negProj[ptoff]) continue;		// have right position, so does not project any more
+					
+					pos = pHandle.get(ptoff);
+					fpreal restv = restVHandle.get(ptoff);
+					
+					openvdb::Vec3f vpos = openvdb::Vec3f(pos.x(), pos.y(), pos.z());
+					
+					openvdb::Vec3f pos2 = angleform.worldToIndex(vpos);
+					openvdb::tools::BoxSampler::sample(angle->tree(), pos2, angleValue);
+					if ( angleValue > 55.0f ) {
+						negProj[ptoff] = 1;
+						continue;
+					}
+					
+					openvdb::Vec3f pos1 = gridform.worldToIndex(vpos);
+					openvdb::tools::BoxSampler::sample(grid->tree(), pos1, value);
+					openvdb::tools::BoxSampler::sample(grad->tree(), pos1, vec);
+					if (fabs(value - restv) < mError){
+						negProj[ptoff] = 1;
+						continue;							
+					}
+					// find the point attr neighboutList and valueRest
+					delta = vec * ( omega * (value - restv) / vec.length() );
+					if (delta.length() < mError){
+						negProj[ptoff] = 1;
+						continue;							
+					}
+					
+					pos.x() += delta.x();
+					pos.y() += delta.y();
+					pos.z() += delta.z();
+					
+					pHandle.set(ptoff, pos);	
+				}
+			} // Projection step
+			else {
+				// relax step
+				GA_Offset ptoff;
+				UT_Vector3 finalPos;
+				std::vector<UT_Vector3> finalPositions;
+				float error, value, weight;
 				
-				pHandle.set(ptoff, pos);
-			}
-			std::cout << "Total points : " << total << std::endl;
-            
-		}	
+				for (GA_Iterator it(gdp->getPointRange()); !it.atEnd(); it.advance())
+				{
+					if (progress.wasInterrupted()) {
+						throw std::runtime_error("Projection was interrupted");
+					}
+					
+					ptoff = it.getOffset();
+					UT_Vector3 pos = pHandle.get(ptoff);
+					const char *string_value = neighbours.get(*it);
+
+					std::stringstream ss(string_value);
+					std::vector<int> neighbourPts;
+					int j;
+					while (ss >> j) {
+						neighbourPts.push_back( j );
+						if (ss.peek() == ',')
+							ss.ignore();
+					}
+					finalPos = UT_Vector3(0, 0, 0);
+					for (unsigned int i = 0; i < neighbourPts.size(); i++){
+						GA_Offset pt = neighbourPts[i];
+						UT_Vector3 np = gdp->getPos3(pt);
+						finalPos += np;
+					}
+					if ( neighbourPts.size() ){
+						finalPos /= neighbourPts.size();
+					}
+					finalPositions.push_back(finalPos);
+				}
+				
+				for (GA_Iterator it(gdp->getPointRange()); !it.atEnd(); it.advance())
+				{
+					ptoff = it.getOffset();
+					UT_Vector3 pos = pHandle.get(ptoff);
+					openvdb::Vec3f vpos = openvdb::Vec3f(pos.x(), pos.y(), pos.z());
+					openvdb::tools::BoxSampler::sample(grid->tree(), gridform.worldToIndex(vpos), value);
+					
+// 					UT_Vector3 p = finalPositions[ptoff];
+					gdp->setPos3(ptoff, finalPositions[ptoff]);
+					
+					error = value - restVHandle.get(ptoff);
+					weight = 1- (error - 1) * (error - 1) * (error - 1) * (error - 1);
+					weight = std::max(0.0f, weight);
+					
+					finalPos = finalPositions[ptoff];
+					finalPos = ( 1 - weight ) * pos + weight * finalPos;
+				}
+					
+			}// relax
+			step++;
+		}
 		
 	} catch (std::exception& e) {
 		addError(SOP_MESSAGE, e.what());
