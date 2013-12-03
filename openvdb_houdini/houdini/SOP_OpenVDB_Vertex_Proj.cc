@@ -223,6 +223,7 @@ SOP_OpenVDB_Vertex_Proj::cookMySop(OP_Context &context)
 		int step = 1;
 		while( step <= mIterations ){
 			if ( step % 3 != 0 ) {
+// 			if ( 1 ){
 				// Projection step
 				for (GA_Iterator it(gdp->getPointRange()); !it.atEnd(); it.advance())
 				{
@@ -284,6 +285,7 @@ SOP_OpenVDB_Vertex_Proj::cookMySop(OP_Context &context)
 					}
 					
 					ptoff = it.getOffset();
+					
 					UT_Vector3 pos = pHandle.get(ptoff);
 					const char *string_value = neighbours.get(*it);
 
@@ -295,15 +297,15 @@ SOP_OpenVDB_Vertex_Proj::cookMySop(OP_Context &context)
 						if (ss.peek() == ',')
 							ss.ignore();
 					}
+					
 					finalPos = UT_Vector3(0, 0, 0);
-					for (unsigned int i = 0; i < neighbourPts.size(); i++){
+					int numberOfNeighbours = neighbourPts.size();
+					
+					for (unsigned int i = 0; i < numberOfNeighbours; i++){
 						GA_Offset pt = neighbourPts[i];
-						UT_Vector3 np = gdp->getPos3(pt);
-						finalPos += np;
+						finalPos += gdp->getPos3(pt);
 					}
-					if ( neighbourPts.size() ){
-						finalPos /= neighbourPts.size();
-					}
+					finalPos /= numberOfNeighbours;
 					finalPositions.push_back(finalPos);
 				}
 				
@@ -314,15 +316,13 @@ SOP_OpenVDB_Vertex_Proj::cookMySop(OP_Context &context)
 					openvdb::Vec3f vpos = openvdb::Vec3f(pos.x(), pos.y(), pos.z());
 					openvdb::tools::BoxSampler::sample(grid->tree(), gridform.worldToIndex(vpos), value);
 					
-// 					UT_Vector3 p = finalPositions[ptoff];
-					gdp->setPos3(ptoff, finalPositions[ptoff]);
-					
 					error = value - restVHandle.get(ptoff);
 					weight = 1- (error - 1) * (error - 1) * (error - 1) * (error - 1);
 					weight = std::max(0.0f, weight);
 					
 					finalPos = finalPositions[ptoff];
 					finalPos = ( 1 - weight ) * pos + weight * finalPos;
+					gdp->setPos3(ptoff, finalPos);
 				}
 					
 			}// relax
