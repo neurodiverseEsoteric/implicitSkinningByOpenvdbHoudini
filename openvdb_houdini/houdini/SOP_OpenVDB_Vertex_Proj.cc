@@ -52,6 +52,8 @@ private:
 	fpreal 	mError;
 	uint		mIterations;
 	fpreal 	mStopAngle;
+	fpreal 	mBias;
+	uint 	mRelaxFreq;
     static const float omega;
 };
 
@@ -69,7 +71,7 @@ SOP_OpenVDB_Vertex_Proj::factory(OP_Network* net,
 }
 
 SOP_OpenVDB_Vertex_Proj::SOP_OpenVDB_Vertex_Proj(OP_Network* net,
-    const char* name, OP_Operator* op) : hvdb::SOP_NodeVDB(net, name, op), mError(.0), mIterations(5), mStopAngle(20)
+    const char* name, OP_Operator* op) : hvdb::SOP_NodeVDB(net, name, op), mError(.0), mIterations(5), mStopAngle(55), mBias(1.0f), mRelaxFreq(3)
 {
 }
 
@@ -80,6 +82,11 @@ newSopOperator(OP_OperatorTable* table)
     if (table == NULL) return;
 
     hutil::ParmList parms;
+	
+	// TODO only deal with some group of points
+// 	parms.add(hutil::ParmFactory(PRM_STRING, "groupPts",  "Group Points")
+// 		.setChoiceList(&hutil::PrimGroupMenu)
+// 		.setHelpText("Choose only a subset of points."));
 	
 	parms.add(hutil::ParmFactory(PRM_STRING, "groupA",  "Group A")
 		.setChoiceList(&hutil::PrimGroupMenu)
@@ -107,11 +114,22 @@ newSopOperator(OP_OperatorTable* table)
 	
 	parms.add(hutil::ParmFactory(PRM_INT, "iter", "Iterations")
         .setDefault(PRMfiveDefaults)
-        .setRange(PRM_RANGE_RESTRICTED, 1, PRM_RANGE_UI, 10));
+        .setRange(PRM_RANGE_RESTRICTED, 0, PRM_RANGE_UI, 30));
 
 	parms.add(hutil::ParmFactory(PRM_FLT_J, "angle", "Stop Angle")
         .setDefault(PRM20Defaults)
         .setRange(PRM_RANGE_RESTRICTED, 10, PRM_RANGE_UI, 100));
+	
+	parms.add(hutil::ParmFactory(PRM_FLT_J, "bias", "Bias")
+        .setDefault(PRMoneDefaults)
+        .setRange(PRM_RANGE_RESTRICTED, 1, PRM_RANGE_UI, 1.5));
+	
+	parms.add(hutil::ParmFactory(PRM_INT, "relaxFreq", "Relax Frequency")
+        .setDefault(PRMthreeDefaults)
+        .setRange(PRM_RANGE_RESTRICTED, 3, PRM_RANGE_UI, 20));
+	
+    parms.add(hutil::ParmFactory(PRM_TOGGLE, "finalRelax", "Final relax")
+        .setDefault(PRMoneDefaults));
 	
     // Register this operator.
     hvdb::OpenVDBOpFactory("OpenVDB Vertex Proj", SOP_OpenVDB_Vertex_Proj::factory, parms, *table)
@@ -145,6 +163,9 @@ SOP_OpenVDB_Vertex_Proj::cookMySop(OP_Context &context)
 		mError = evalFloat("error", 0, time);
 		mIterations = evalInt("iter", 0, time);
 		mStopAngle = evalFloat("angle", 0, time);
+		mBias = evalFloat("bias", 0, time);
+		mRelaxFreq = evalInt("relaxFreq", 0, time);
+		const bool doFinalRelax = evalInt("finalRelax", 0, time);
 		
 		UT_String gridNameStr;
 		evalString(gridNameStr, "gridName", 0, time);
@@ -155,6 +176,10 @@ SOP_OpenVDB_Vertex_Proj::cookMySop(OP_Context &context)
 		UT_String angleNameStr;
 		evalString(angleNameStr, "angleName", 0, time);
 		
+		// TODO only deal with some group of points
+// 		UT_String groupPtsStr;
+// 		evalString(groupPtsStr, "groupPts", 0, time);
+// 		const GA_PrimitiveGroup *groupA = matchGroup(const_cast<GU_Detail&>(*vdbAGdp), groupPtsStr.toStdString());
 		
 		UT_String groupAStr;
 		evalString(groupAStr, "groupA", 0, time);
@@ -219,12 +244,13 @@ SOP_OpenVDB_Vertex_Proj::cookMySop(OP_Context &context)
 			
 			
 		boost::dynamic_bitset<> negProj(pointCount);
+		boost::dynamic_bitset<> contactRegion(pointCount);
 		
 		int step = 1;
 		while( step <= mIterations ){
-			if ( step % 3 != 0 ) {
-// 			if ( 1 ){
-				// Projection step
+			if ( step % mRelaxFreq != 0 ) {
+				bool allIsRightPos = true;
+				
 				for (GA_Iterator it(gdp->getPointRange()); !it.atEnd(); it.advance())
 				{
 					if(progress.wasInterrupted()) {
@@ -245,8 +271,8 @@ SOP_OpenVDB_Vertex_Proj::cookMySop(OP_Context &context)
 					
 					openvdb::Vec3f pos2 = angleform.worldToIndex(vpos);
 					openvdb::tools::BoxSampler::sample(angle->tree(), pos2, angleValue);
-					if ( angleValue > 55.0f ) {
-						negProj[ptoff] = 1;
+					if ( angleValue > mStopAngle ) {
+						contactRegion[ptoff] = 1;
 						continue;
 					}
 					
@@ -258,7 +284,7 @@ SOP_OpenVDB_Vertex_Proj::cookMySop(OP_Context &context)
 						continue;							
 					}
 					// find the point attr neighboutList and valueRest
-					delta = vec * ( omega * (value - restv) / vec.length() );
+					delta = vec * ( omega * (restv - value) / vec.length() );
 					if (delta.length() < mError){
 						negProj[ptoff] = 1;
 						continue;							
@@ -269,7 +295,10 @@ SOP_OpenVDB_Vertex_Proj::cookMySop(OP_Context &context)
 					pos.z() += delta.z();
 					
 					pHandle.set(ptoff, pos);	
+					allIsRightPos = false;
 				}
+				if ( allIsRightPos ) 
+					break;
 			} // Projection step
 			else {
 				// relax step
@@ -281,7 +310,7 @@ SOP_OpenVDB_Vertex_Proj::cookMySop(OP_Context &context)
 				for (GA_Iterator it(gdp->getPointRange()); !it.atEnd(); it.advance())
 				{
 					if (progress.wasInterrupted()) {
-						throw std::runtime_error("Projection was interrupted");
+						throw std::runtime_error("Relax was interrupted");
 					}
 					
 					ptoff = it.getOffset();
@@ -310,22 +339,73 @@ SOP_OpenVDB_Vertex_Proj::cookMySop(OP_Context &context)
 				
 				for (GA_Iterator it(gdp->getPointRange()); !it.atEnd(); it.advance())
 				{
+					if (progress.wasInterrupted()) {
+						throw std::runtime_error("Relax was interrupted");
+					}
+					
 					ptoff = it.getOffset();
+
+					if (negProj[ptoff]) continue;		// have right position, so does not relax any more
+					
 					UT_Vector3 pos = pHandle.get(ptoff);
 					openvdb::Vec3f vpos = openvdb::Vec3f(pos.x(), pos.y(), pos.z());
 					openvdb::tools::BoxSampler::sample(grid->tree(), gridform.worldToIndex(vpos), value);
 					
 					error = value - restVHandle.get(ptoff);
-					weight = 1- (error - 1) * (error - 1) * (error - 1) * (error - 1);
+					weight = 1- (error - mBias) * (error - mBias) * (error - mBias) * (error - mBias);
 					weight = std::max(0.0f, weight);
 					
 					finalPos = finalPositions[ptoff];
+// 					finalPos = ( 1 - weight ) * pos + weight * finalPos;
 					finalPos = ( 1 - weight ) * pos + weight * finalPos;
 					gdp->setPos3(ptoff, finalPos);
 				}
 					
 			}// relax
 			step++;
+		}
+		
+		if ( doFinalRelax ) {
+			// final relax , only work at contact region
+			std::map<GA_Offset, UT_Vector3> contactPos;
+			for (GA_Iterator it(gdp->getPointRange()); !it.atEnd(); it.advance())
+			{
+				if (progress.wasInterrupted()) {
+					throw std::runtime_error("final relax was interrupted");
+				}
+						
+				GA_Offset ptoff = it.getOffset();
+				if (contactRegion[ptoff]) continue;		// not in contact region, just ignore
+
+				const char *string_value = neighbours.get(*it);
+
+				std::stringstream ss(string_value);
+				std::vector<int> neighbourPts;
+				int j;
+				while (ss >> j) {
+					neighbourPts.push_back( j );
+					if (ss.peek() == ',')
+						ss.ignore();
+				}
+				
+				UT_Vector3 finalPos = UT_Vector3(0, 0, 0);
+				int numberOfNeighbours = neighbourPts.size();
+				
+				for (unsigned int i = 0; i < numberOfNeighbours; i++){
+					GA_Offset pt = neighbourPts[i];
+					finalPos += gdp->getPos3(pt);
+				}
+				finalPos /= numberOfNeighbours;
+				contactPos[ptoff] = finalPos;
+			}
+			
+			for(std::map<GA_Offset, UT_Vector3>::iterator iter = contactPos.begin(); iter != contactPos.end(); ++iter)
+			{
+				GA_Offset ptoff =  iter->first;	
+				gdp->setPos3(ptoff, iter->second);
+			}
+			
+			contactPos.clear();
 		}
 		
 	} catch (std::exception& e) {
