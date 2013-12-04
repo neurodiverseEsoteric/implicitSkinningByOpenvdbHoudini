@@ -286,7 +286,6 @@ SOP_OpenVDB_Vertex_Proj::cookMySop(OP_Context &context)
 					
 					ptoff = it.getOffset();
 					
-					UT_Vector3 pos = pHandle.get(ptoff);
 					const char *string_value = neighbours.get(*it);
 
 					std::stringstream ss(string_value);
