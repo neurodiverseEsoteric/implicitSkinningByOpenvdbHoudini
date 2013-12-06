@@ -110,6 +110,10 @@ newSopOperator(OP_OperatorTable* table)
         .setDefault(PRMzeroDefaults)
         .setRange(PRM_RANGE_RESTRICTED, 0.01, PRM_RANGE_UI, 10));
 	
+	parms.add(hutil::ParmFactory(PRM_STRING, "outGroup",  "output Group")
+		.setDefault(0, "thetaGrid")
+		.setHelpText("Output theta grid name."));
+	
 	// Register this operator.
     hvdb::OpenVDBOpFactory("OpenVDB Remapangle", SOP_OpenVDB_Remapangle::factory, parms, *table)
 		.addInput("VDBs");
@@ -122,8 +126,9 @@ SOP_OpenVDB_Remapangle::cookMySop(OP_Context& context)
     try {
         hutil::ScopedInputLock lock(*this, context);
         const fpreal time = context.getTime();
-		duplicateSource(0, context);
+		gdp->clearAndDestroy();
 
+		const GU_Detail* vdbA = inputGeo(0, context);
 		
 		float alpha1 = evalFloat("alpha1", 0, time);
 		float alpha2 = evalFloat("alpha2", 0, time);
@@ -136,21 +141,37 @@ SOP_OpenVDB_Remapangle::cookMySop(OP_Context& context)
 		
 		UT_String groupStr;
 		evalString(groupStr, "group", 0, time);
-	    const GA_PrimitiveGroup *group = matchGroup(*gdp, groupStr.toStdString());
+	    const GA_PrimitiveGroup *group = matchGroup(const_cast<GU_Detail&>(*vdbA), groupStr.toStdString());
+		
+		
+		// Create a output grid and group
+        GA_PrimitiveGroup* outGroup = NULL;
+        UT_String outGroupStr;
+        evalString(outGroupStr, "outGroup", 0, time);
+        if(outGroupStr.isstring()) {
+            outGroup = gdp->newPrimitiveGroup(outGroupStr.buffer());
+        }
+		openvdb::FloatGrid::Ptr outGrid = openvdb::FloatGrid::create();
+		openvdb::FloatGrid::Accessor accessor = outGrid->getAccessor();	
+		
 		
 		hvdb::Interrupter progress("Remap angle according to remap function.");
 		
-		for (hvdb::VdbPrimIterator it(gdp, group); it; ++it) {
+		for (hvdb::VdbPrimCIterator it(vdbA, group); it; ++it) {
 			if (progress.wasInterrupted()) 
 				throw std::runtime_error("was interrupted");	
 			
-			GU_PrimVDB* vdb = *it;
+			const GU_PrimVDB* vdb = *it;
 			if (vdb->getGrid().isType<openvdb::FloatGrid>()){
-				openvdb::FloatGrid *  grid = static_cast<openvdb::FloatGrid *>(&vdb->getGrid());
+				const openvdb::FloatGrid *  grid = static_cast<const openvdb::FloatGrid *>(&vdb->getGrid());
 // 				int success = UTvdbProcessTypedGrid(UTvdbGetGridType(vdb->getGrid()), &vdb->getGrid(), Op);
-				int j = 0;
-				for (openvdb::FloatGrid::ValueOnIter iter = grid->beginValueOn(); iter.test(); ++iter){
-					float value = iter.getValue() * PI180, temp;
+// 				int j = 0;
+				outGrid->setTransform(grid->transform().copy());
+				for (openvdb::FloatGrid::ValueOnCIter iter = grid->cbeginValueOn(); iter.test(); ++iter){
+					const float value = iter.getValue() * PI180;
+					float temp;
+					
+					// remap angle to theta 
 					if (value <= alpha1)
 						temp = theta1;
 					else if (value >= alpha3)
@@ -163,8 +184,15 @@ SOP_OpenVDB_Remapangle::cookMySop(OP_Context& context)
 							temp = pow(kaba( (value - alpha2) / (alpha3 - alpha2 ) ), w2) * ( theta3 - theta2 ) + theta2;
 						}	
 					}
-					iter.setValue(temp);
-					j++;
+// 					iter.setValue(temp);
+// 					// set theta grid value
+					if (iter.isVoxelValue()) { // set a single voxel
+						accessor.setValue(iter.getCoord(), temp);
+					} else { // fill an entire tile
+						openvdb::CoordBBox bbox;
+						iter.getBoundingBox(bbox);
+						accessor.getTree()->fill(bbox, temp);
+					}
 				}
 				
 // 				std::cout << "remap grid value are : " << std::endl;
@@ -173,8 +201,12 @@ SOP_OpenVDB_Remapangle::cookMySop(OP_Context& context)
 // 		// 			if ( value.x() > 0 ) 
 // 					std::cout << "Grid world" << grid->constTransform().indexToWorld(iter.getCoord()) << " index" << iter.getCoord() << " = " << value << std::endl;
 // 				}
-			}	
+			}
+			break;
 		}
+		
+		GEO_PrimVDB* vda = hvdb::createVdbPrimitive(*gdp, outGrid, outGroupStr.toStdString().c_str());		
+		if (outGroup) outGroup->add(vda);
 		
 	} catch (std::exception& e) {
 		addError(SOP_MESSAGE, e.what());

@@ -262,7 +262,7 @@ SOP_OpenVDB_Vertex_Proj::cookMySop(OP_Context &context)
 					UT_Vector3 pos;
 					
 					GA_Offset ptoff = it.getOffset();
-					if (negProj[ptoff]) continue;		// have right position, so does not project any more
+					if (negProj[ptoff] || contactRegion[ptoff]) continue;		// have right position, so does not project any more
 					
 					pos = pHandle.get(ptoff);
 					fpreal restv = restVHandle.get(ptoff);
