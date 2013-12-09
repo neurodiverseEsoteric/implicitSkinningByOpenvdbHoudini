@@ -170,7 +170,9 @@ SOP_OpenVDB_Vector_Angle::cookMySop(OP_Context &context)
 				openvdb::tools::BoxSampler::sample(gridA->tree(), gridAXform.worldToIndex(pos), gradA);
 				openvdb::tools::BoxSampler::sample(gridB->tree(), gridBXform.worldToIndex(pos), gradB);
 				float temp = openvdb::math::angle(gradA, gradB) / PI * 180;
-				temp = temp > 5 ? temp : 0.0f;
+// 				float temp = acos( gradA.dot(gradB) ) / PI * 180;
+				if ( gradA == openvdb::Vec3f(0.0f, 0.0f, 0.0f) || gradB == openvdb::Vec3f(0.0f, 0.0f, 0.0f) )
+					temp = 0.0f;
 				iter.setValue(temp);
 			} else { // fill an entire tile
 				openvdb::CoordBBox bbox;

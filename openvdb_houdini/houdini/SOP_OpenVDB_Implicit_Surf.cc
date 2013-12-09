@@ -248,7 +248,7 @@ SOP_OpenVDB_Implicit_Surf::cookMySop(OP_Context &context)
 		// make the vdb grid and gradient grid by hrbf
 		openvdb::GridPtrSet outGrids;
 		
-		openvdb::FloatGrid::Ptr outGrid = openvdb::FloatGrid::create();
+		openvdb::FloatGrid::Ptr outGrid = openvdb::FloatGrid::create(0.0f);
 		openvdb::CoordBBox bbox(openvdb::Coord(minX - voxelSize * radius, minY - voxelSize * radius, minZ - voxelSize * radius), \
 			openvdb::Coord(maxX + voxelSize * radius, maxY + voxelSize * radius, maxZ + voxelSize * radius));	
 		
@@ -258,11 +258,12 @@ SOP_OpenVDB_Implicit_Surf::cookMySop(OP_Context &context)
 		
 		fillVDB(outGrid, bbox, hrbf_surf, voxelSize, radius);
 		outGrid->setName(vdbNameStr.toStdString());
-		outGrid->tree().prune();
+		//outGrid->tree().prune();
+		outGrid->signedFloodFill();
 		
 		openvdb::VectorGrid::Ptr outGradGrid = openvdb::tools::gradient(*outGrid);
 		outGradGrid->setName(vdbGradNameStr.toStdString());
-		outGradGrid->tree().prune();
+// 		outGradGrid->tree().prune();
 		
 		outGrids.insert(outGrid);
 		outGrids.insert(outGradGrid);
