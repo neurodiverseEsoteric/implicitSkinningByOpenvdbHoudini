@@ -122,7 +122,7 @@ SOP_OpenVDB_Vector_Angle::cookMySop(OP_Context &context)
 			if (vdb->getGrid().isType<openvdb::FloatGrid>())
 				grid = static_cast<openvdb::FloatGrid *>(&vdb->getGrid());
 			else 
-				gdp->destroyPrimitive(*vdb, /*andPoints=*/true);
+				gdp->destroyPrimitive(*vdb, true);
 		}	
 				
 				
@@ -165,11 +165,13 @@ SOP_OpenVDB_Vector_Angle::cookMySop(OP_Context &context)
 			hvdb::Interrupter progress("Calculate vector angle based on two gradient vector grid");
 					
 			if (iter.isVoxelValue()) { // set a single voxel
-				openvdb::Vec3f pos = grid->constTransform().indexToWorld(iter.getCoord()), temp;
+				openvdb::Vec3f pos = grid->constTransform().indexToWorld(iter.getCoord());
 				openvdb::Vec3f gradA, gradB;
 				openvdb::tools::BoxSampler::sample(gridA->tree(), gridAXform.worldToIndex(pos), gradA);
 				openvdb::tools::BoxSampler::sample(gridB->tree(), gridBXform.worldToIndex(pos), gradB);
-				iter.setValue(openvdb::math::angle(gradA, gradB) / PI * 180);
+				float temp = openvdb::math::angle(gradA, gradB) / PI * 180;
+				temp = temp > 5 ? temp : 0.0f;
+				iter.setValue(temp);
 			} else { // fill an entire tile
 				openvdb::CoordBBox bbox;
 				iter.getBoundingBox(bbox);
