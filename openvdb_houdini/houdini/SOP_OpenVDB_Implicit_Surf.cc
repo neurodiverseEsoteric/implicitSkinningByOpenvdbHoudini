@@ -176,7 +176,6 @@ SOP_OpenVDB_Implicit_Surf::cookMySop(OP_Context &context)
 	try {
 		hutil::ScopedInputLock lock(*this, context);
 		hvdb::Interrupter boss("Converting geometry to volume");
-
 		gdp->clearAndDestroy();
 
         // Get params

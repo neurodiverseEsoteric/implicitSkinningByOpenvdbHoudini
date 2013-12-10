@@ -29,6 +29,8 @@
 namespace hvdb = openvdb_houdini;
 namespace hutil = houdini_utils;
 
+#define PI 3.1415926535897931
+
 ////////////////////////////////////////
 
 
@@ -91,10 +93,6 @@ newSopOperator(OP_OperatorTable* table)
 	parms.add(hutil::ParmFactory(PRM_STRING, "groupA",  "Group A")
 		.setChoiceList(&hutil::PrimGroupMenu)
 		.setHelpText("Choose only a subset of the input vdb grids."));
-			
-	parms.add(hutil::ParmFactory(PRM_STRING, "groupB",  "Group B")
-		.setChoiceList(&hutil::PrimGroupMenu)
-		.setHelpText("Choose only a subset of the input vdb grids."));
 	
 	parms.add(hutil::ParmFactory(PRM_STRING, "gridName", "Value Grid Name")
 		.setDefault(0, "valueGrid")
@@ -103,10 +101,6 @@ newSopOperator(OP_OperatorTable* table)
 	parms.add(hutil::ParmFactory(PRM_STRING, "gradName", "Gradient Grid Name")
 		.setDefault(0, "gradGrid")
         .setHelpText("gradient grid name."));
-	
-	parms.add(hutil::ParmFactory(PRM_STRING, "angleName", "Angle Grid Name")
-		.setDefault(0, "angleGrid")
-        .setHelpText("Angle grid name."));
 	
 	parms.add(hutil::ParmFactory(PRM_FLT_J, "error", "Error Bound")
         .setDefault(PRMzeroDefaults)
@@ -134,8 +128,8 @@ newSopOperator(OP_OperatorTable* table)
     // Register this operator.
     hvdb::OpenVDBOpFactory("OpenVDB Vertex Proj", SOP_OpenVDB_Vertex_Proj::factory, parms, *table)
 		.addInput("Polygon Mesh")
-		.addInput("VDBs")
 		.addInput("VDBs");
+
 }
 
 
@@ -158,7 +152,6 @@ SOP_OpenVDB_Vertex_Proj::cookMySop(OP_Context &context)
 		 * Get params
 		 */
 		const GU_Detail* vdbAGdp = inputGeo(1, context);
-		const GU_Detail* vdbBGdp = inputGeo(2, context);
 		
 		mError = evalFloat("error", 0, time);
 		mIterations = evalInt("iter", 0, time);
@@ -173,9 +166,6 @@ SOP_OpenVDB_Vertex_Proj::cookMySop(OP_Context &context)
 		UT_String gradNameStr;
 		evalString(gradNameStr, "gradName", 0, time);
 		
-		UT_String angleNameStr;
-		evalString(angleNameStr, "angleName", 0, time);
-		
 		// TODO only deal with some group of points
 // 		UT_String groupPtsStr;
 // 		evalString(groupPtsStr, "groupPts", 0, time);
@@ -185,9 +175,6 @@ SOP_OpenVDB_Vertex_Proj::cookMySop(OP_Context &context)
 		evalString(groupAStr, "groupA", 0, time);
 		const GA_PrimitiveGroup *groupA = matchGroup(const_cast<GU_Detail&>(*vdbAGdp), groupAStr.toStdString());
 		
-		UT_String groupBStr;
-		evalString(groupBStr, "groupB", 0, time);
-		const GA_PrimitiveGroup *groupB = matchGroup(const_cast<GU_Detail&>(*vdbBGdp), groupBStr.toStdString());
 		
 // 		std::cout << "Required grid name : " << gridNameStr.toStdString() << std::endl;
 // 		std::cout << "Required gradient name : " << gradNameStr.toStdString() << std::endl;
@@ -201,20 +188,11 @@ SOP_OpenVDB_Vertex_Proj::cookMySop(OP_Context &context)
 				pgrad = *it;
 		}
 		
-		const hvdb::GU_PrimVDB *pangle = NULL;
-		for (hvdb::VdbPrimCIterator it(vdbBGdp, groupB); it; ++it) {
-			const std::string gridName = it.getPrimitiveName().toStdString();
-// 			std::cout << "Grid name : " << gridName << std::endl;
-			if ( gridName.compare( angleNameStr.toStdString() ) == 0 )
-				pangle = *it;
-		}
-		
-		openvdb::FloatGrid::Ptr grid, angle;
+		openvdb::FloatGrid::Ptr grid;
 		openvdb::VectorGrid::Ptr grad;
-		if (pgrid != NULL && pgrad != NULL && pangle != NULL) {
+		if( pgrid != NULL && pgrad != NULL ) {
 			grid = openvdb::gridPtrCast<openvdb::FloatGrid>( pgrid->getGrid().deepCopyGrid() );
 			grad = openvdb::gridPtrCast<openvdb::VectorGrid>( pgrad->getGrid().deepCopyGrid() );
-			angle = openvdb::gridPtrCast<openvdb::FloatGrid>( pangle->getGrid().deepCopyGrid() );
 		}
 		else{
 			throw std::runtime_error("Cannot find value or gradient grid.");
@@ -224,8 +202,7 @@ SOP_OpenVDB_Vertex_Proj::cookMySop(OP_Context &context)
 		if (!neighbours.isValid())
 			throw std::runtime_error("Cannot find attribute Neighbours");
 		
-		openvdb::math::Transform& gridform = grid->transform(); 		// gradient and grid have same transform
-		openvdb::math::Transform& angleform = angle->transform();
+		openvdb::math::Transform& gridform = grid->transform(); 		// gradient and grid have same transfer
 
 		/*
 		 * Project 
@@ -235,7 +212,7 @@ SOP_OpenVDB_Vertex_Proj::cookMySop(OP_Context &context)
 		//pHandle(gdp->findAttribute(GA_ATTRIB_POINT, "nearList"));
 		GA_ROHandleR restVHandle(gdp->findAttribute(GA_ATTRIB_POINT, "restValue"));
 		GA_RWHandleV3 pHandle(gdp->getP());	
-		
+		GA_RWHandleV3 cdHandle(gdp->findAttribute(GA_ATTRIB_POINT, "Cd"));
 		
 		GA_Offset pointCount = 0;
 		for (GA_Iterator it(gdp->getPointRange()); !it.atEnd(); it.advance()){
@@ -246,10 +223,16 @@ SOP_OpenVDB_Vertex_Proj::cookMySop(OP_Context &context)
 		boost::dynamic_bitset<> negProj(pointCount);
 		boost::dynamic_bitset<> contactRegion(pointCount);
 		
+		std::vector<openvdb::Vec3f> prevVectList;
+		for( int j = 1; j < pointCount; j++ ){
+			prevVectList.push_back(openvdb::Vec3f(0.0f, 0.0f, 0.0f));
+		}
+		
 		int step = 1;
 		while( step <= mIterations ){
 			if ( step % mRelaxFreq != 0 ) {
 				bool allIsRightPos = true;
+				
 				
 				for (GA_Iterator it(gdp->getPointRange()); !it.atEnd(); it.advance())
 				{
@@ -257,37 +240,57 @@ SOP_OpenVDB_Vertex_Proj::cookMySop(OP_Context &context)
 						throw std::runtime_error("Projection was interrupted");
 					}
 					
-					openvdb::Vec3f vec, delta;
-					float value, angleValue;
+					openvdb::Vec3f vec, delta, prevVect;
+					float value = 0.0f, angleValue = 0.0f;
 					UT_Vector3 pos;
 					
 					GA_Offset ptoff = it.getOffset();
-					if (negProj[ptoff] || contactRegion[ptoff]) continue;		// have right position, so does not project any more
+// 					if (negProj[ptoff] || contactRegion[ptoff]) continue;		// have right position, so does not project any more
+					if (contactRegion[ptoff])                 continue;
 					
 					pos = pHandle.get(ptoff);
 					fpreal restv = restVHandle.get(ptoff);
 					
 					openvdb::Vec3f vpos = openvdb::Vec3f(pos.x(), pos.y(), pos.z());
-					
-					openvdb::Vec3f pos2 = angleform.worldToIndex(vpos);
-					openvdb::tools::BoxSampler::sample(angle->tree(), pos2, angleValue);
-					if ( angleValue > mStopAngle ) {
-						contactRegion[ptoff] = 1;
-						continue;
-					}
-					
-					openvdb::Vec3f pos1 = gridform.worldToIndex(vpos);
-					openvdb::tools::BoxSampler::sample(grid->tree(), pos1, value);
-					openvdb::tools::BoxSampler::sample(grad->tree(), pos1, vec);
+								
+					vpos = gridform.worldToIndex(vpos);
+					openvdb::tools::BoxSampler::sample(grid->tree(), vpos, value);
+					openvdb::tools::BoxSampler::sample(grad->tree(), vpos, vec);
 					if (fabs(value - restv) < mError){
 						negProj[ptoff] = 1;
+						UT_Vector3 color = cdHandle.get(ptoff);
+						color.z() = 1;
+						color.y() = 0;
+						cdHandle.set(ptoff, color);
 						continue;							
 					}
-					// find the point attr neighboutList and valueRest
-					delta = vec * ( omega * (restv - value) / vec.length() );
+					
+					prevVect = prevVectList[ptoff];
+					angleValue = openvdb::math::angle(prevVect, vec) / PI * 180;
+					if ( prevVect == openvdb::Vec3f(0.0f, 0.0f, 0.0f) || vec == openvdb::Vec3f(0.0f, 0.0f, 0.0f) )
+						angleValue = 0.0f;
+					if ( angleValue > mStopAngle ) {
+						contactRegion[ptoff] = 1;
+						UT_Vector3 color = cdHandle.get(ptoff);
+						color.x() = 1;
+						color.y() = 0;
+						cdHandle.set(ptoff, color);
+						continue;
+					}
+					else {
+						prevVectList[ptoff] = vec;
+					}
+					
+					
+					// using newton iteration method to project 
+					delta = vec * ( omega * (restv - value) / vec.lengthSqr() );
 					if (delta.length() < mError){
 						negProj[ptoff] = 1;
-						continue;							
+						UT_Vector3 color = cdHandle.get(ptoff);
+						color.x() = 1;
+						color.y() = 1;
+						cdHandle.set(ptoff, color);
+						continue;
 					}
 					
 					pos.x() += delta.x();
@@ -365,6 +368,8 @@ SOP_OpenVDB_Vertex_Proj::cookMySop(OP_Context &context)
 			step++;
 		}
 		
+		prevVectList.clear();
+		
 		if ( doFinalRelax ) {
 			// final relax , only work at contact region
 			std::map<GA_Offset, UT_Vector3> contactPos;
@@ -375,7 +380,7 @@ SOP_OpenVDB_Vertex_Proj::cookMySop(OP_Context &context)
 				}
 						
 				GA_Offset ptoff = it.getOffset();
-				if (contactRegion[ptoff]) continue;		// not in contact region, just ignore
+				if (!contactRegion[ptoff] || negProj[ptoff]) continue;		// not in contact region, just ignore
 
 				const char *string_value = neighbours.get(*it);
 

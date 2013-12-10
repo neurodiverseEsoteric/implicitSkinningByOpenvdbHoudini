@@ -58,13 +58,13 @@ void makeBox(FloatGrid::Ptr grid, const CoordBBox& indexBB, float voxelSize)
 {
 	typename FloatGrid::Accessor accessor = grid->getAccessor();
 
-	float x, y, tan_theta, value;
+	float x, y, tan_theta, value;	
 	for (Int32 k = indexBB.min().z(); k <= indexBB.max().z(); ++k) { // tan theta
 		float tan_theta = k * voxelSize;
 		for (Int32 i = indexBB.min().x(); i <= indexBB.max().x(); ++i) {
 			float x = i * voxelSize; // Ci = x;
-			Int32 j = indexBB.min().y();
-			float y = j * voxelSize;
+			Int32 j = 0;
+			float y = 0.0f;
 			while ( y <= x ) {
 				if ( x > 0.7f ){
 					value = x;

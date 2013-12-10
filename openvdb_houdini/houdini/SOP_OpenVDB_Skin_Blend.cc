@@ -350,6 +350,8 @@ SOP_OpenVDB_Skin_Blend::cookMySop(OP_Context &context)
 				apos = gridC->worldToIndex(worldPt);
 				openvdb::tools::PointSampler::sample(gridC->tree(), apos, t);
 				
+				t = tan(t);
+				
 				openvdb::Vec3f vpos = openvdb::Vec3f(a * 128.0, b * 128.0, t * 128.0);
 				openvdb::tools::BoxSampler::sample(blendGrid->tree(), vpos, value);
 				iter.setValue(value);
